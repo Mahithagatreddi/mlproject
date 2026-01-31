@@ -1,0 +1,51 @@
+from fastapi import FastAPI
+from pydantic import BaseModel
+import joblib
+import numpy as np
+import pandas as pd
+import logging
+import os
+
+# -------- STEP 12: Monitoring / Logging --------
+os.makedirs("logs", exist_ok=True)
+
+logging.basicConfig(
+    filename="logs/app.log",
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(message)s"
+)
+
+logging.info("Smart Grid API started")
+
+# ----------------------------------------------
+
+app = FastAPI()
+
+model = joblib.load("models/forecast_model.pkl")
+
+class ForecastRequest(BaseModel):
+    timestamp: str
+    lag_1: float
+    lag_2: float
+    lag_24: float
+
+@app.post("/predict")
+def predict(req: ForecastRequest):
+    logging.info(f"Prediction request received: {req}")
+
+    ts = pd.to_datetime(req.timestamp)
+    hour = ts.hour
+    dayofweek = ts.dayofweek
+    month = ts.month
+
+    hour_sin = np.sin(2 * np.pi * hour / 24)
+    hour_cos = np.cos(2 * np.pi * hour / 24)
+
+    X = [[hour_sin, hour_cos, dayofweek, month,
+          req.lag_1, req.lag_2, req.lag_24]]
+
+    pred = model.predict(X)[0]
+
+    logging.info(f"Prediction output: {pred}")
+
+    return {"predicted_consumption_kwh": float(pred)}
